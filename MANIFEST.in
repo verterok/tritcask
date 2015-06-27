@@ -1,0 +1,7 @@
+include COPYING
+include README
+include setup.py
+include tritcask.py
+recursive-include contrib *.py
+recursive-include tests *.py
+
