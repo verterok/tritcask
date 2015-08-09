@@ -88,7 +88,7 @@ class BaseTestCase(TestCase):
             return self.__root
 
         self._base_temp_dir = tempfile.mkdtemp(suffix='tritcask_tests')
-        MAX_FILENAME = 32 # some platforms limit lengths of filenames
+        MAX_FILENAME = 32  # some platforms limit lengths of filenames
         base = os.path.join(self.__class__.__module__[:MAX_FILENAME],
                             self.__class__.__name__[:MAX_FILENAME],
                             self._testMethodName[:MAX_FILENAME])

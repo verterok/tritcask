@@ -265,8 +265,7 @@ class DataFileTest(BaseTestCase):
         fmap = mmap.mmap(data_file.fd.fileno(), 0, access=mmap.ACCESS_READ)
         with contextlib.closing(fmap):
             current_pos = 0
-            (crc32, tstamp, key_sz, value_sz, row_type,
-                 key, value, pos), new_pos = data_file.read(fmap, current_pos)
+            (crc32, tstamp, key_sz, value_sz, row_type, key, value, pos), new_pos = data_file.read(fmap, current_pos)
             current_pos = new_pos
             self.assertEqual(crc32_size+header_size+key_sz+value_sz, new_pos)
             self.assertEqual(orig_tstamp, tstamp)
@@ -274,10 +273,8 @@ class DataFileTest(BaseTestCase):
             self.assertEqual(len('bar'), value_sz)
             self.assertEqual('bar', value)
             self.assertEqual(0, row_type)
-            (crc32, tstamp, key_sz, value_sz, row_type,
-                 key, value, pos), new_pos = data_file.read(fmap, current_pos)
-            self.assertEqual(
-                crc32_size+header_size+key_sz+value_sz+current_pos, new_pos)
+            (crc32, tstamp, key_sz, value_sz, row_type, key, value, pos), new_pos = data_file.read(fmap, current_pos)
+            self.assertEqual(crc32_size+header_size+key_sz+value_sz+current_pos, new_pos)
             self.assertEqual(tstamp1, tstamp)
             self.assertEqual(len('foo1'), key_sz)
             self.assertEqual(len('bar1'), value_sz)
@@ -710,7 +707,7 @@ class HintFileTest(BaseTestCase):
         db.shutdown()
         Tritcask(self.base_dir).shutdown()
         self.assertTrue(immutable_file.has_hint)
-        #check that the hint matches the contents in the DB
+        # check that the hint matches the contents in the DB
         hint_file = immutable_file.get_hint_file()
         db = Tritcask(self.base_dir)
         self.addCleanup(db.shutdown)
@@ -802,8 +799,7 @@ class LowLevelTest(BaseTestCase):
     def test_get_value(self):
         """Test _get_value method."""
         self.db.put(0, 'foo', 'bar')
-        value = self.db._get_value(self.db.live_file.file_id,
-                               crc32_size+header_size+len('foo'), len('bar'))
+        value = self.db._get_value(self.db.live_file.file_id, crc32_size+header_size+len('foo'), len('bar'))
         self.assertEqual(value, 'bar')
 
     def test_get_value_different_file_ids(self):
@@ -935,6 +931,7 @@ class InitTest(BaseTestCase):
         data_file.write(0, 'foo_0', 'bar_0')
         immutable_file = data_file.make_immutable()
         immutable_file.close()
+
         # patch the open call and make it fail
         def fail_open(filename, *a):
             """Always fail."""
@@ -946,7 +943,7 @@ class InitTest(BaseTestCase):
                                               key=attrgetter('filename'))]
         self.assertNotIn(immutable_file.filename, files)
         # check the logs
-        msg = ("Failed to open %s, renaming it to: %s - error: %s" % \
+        msg = ("Failed to open %s, renaming it to: %s - error: %s" %
                (immutable_file.filename,
                 immutable_file.filename.replace(INACTIVE, BROKEN),
                 IOError("I'm a broken file")))
@@ -959,6 +956,7 @@ class InitTest(BaseTestCase):
         data_file.close()
         # patch the open call and make it fail
         orig_open = DataFile._open
+
         def fail_open(filename, *a):
             """Always fail only once."""
             self.patch(DataFile, '_open', orig_open)
@@ -969,7 +967,7 @@ class InitTest(BaseTestCase):
         self.assertNotEqual(data_file.filename, db.live_file.filename)
         # check the logs
         self.memento.debug = True
-        msg = ("Failed to open %s, renaming it to: %s - error: %s" % \
+        msg = ("Failed to open %s, renaming it to: %s - error: %s" %
                (data_file.filename,
                 data_file.filename.replace(LIVE, BROKEN),
                 IOError("I'm a broken file")))
@@ -1061,7 +1059,7 @@ class InitTest(BaseTestCase):
         db = Tritcask(self.base_dir)
         self.addCleanup(db.shutdown)
         self.assertTrue(os.path.exists(hint_filename))
-        #check that the hint matches the contents in the DB
+        # check that the hint matches the contents in the DB
         hint_file = HintFile(hint_filename)
         for hint_entry in hint_file.iter_entries():
             self.assertEqual(6, len(hint_entry))
@@ -1084,7 +1082,7 @@ class InitTest(BaseTestCase):
         self.addCleanup(db.shutdown)
         self.assertFalse(os.path.exists(db.live_file.hint_filename))
         self.assertTrue(os.path.exists(hint_filename), os.listdir(db.base_path))
-        #check that the hint matches the contents in the DB
+        # check that the hint matches the contents in the DB
         hint_file = HintFile(hint_filename)
         for hint_entry in hint_file.iter_entries():
             self.assertEqual(6, len(hint_entry))
@@ -1433,8 +1431,7 @@ class MergeTests(BaseTestCase):
             (crc32, tstamp, key_sz, value_sz, row_type,
                 key, value, value_pos) = entry
             keydir_entry = keydir_to_merge[(row_type, key)]
-            (old_file_id, old_tstamp, old_value_sz, old_value_pos) = \
-                    keydir_entry
+            (old_file_id, old_tstamp, old_value_sz, old_value_pos) = keydir_entry
             old_value = db._get_value(old_file_id, old_value_pos, old_value_sz)
             self.assertEqual(old_value, value)
         for fname in immutable_fnames:
@@ -1463,8 +1460,7 @@ class MergeTests(BaseTestCase):
             (crc32, tstamp, key_sz, value_sz, row_type,
                 key, value, value_pos) = entry
             keydir_entry = keydir_to_merge[(row_type, key)]
-            (old_file_id, old_tstamp, old_value_sz, old_value_pos) = \
-                    keydir_entry
+            (old_file_id, old_tstamp, old_value_sz, old_value_pos) = keydir_entry
             old_value = db._get_value(old_file_id, old_value_pos, old_value_sz)
             self.assertEqual(old_value, value)
         for fname in immutable_fnames:
@@ -1558,17 +1554,16 @@ class MergeTests(BaseTestCase):
         # start a new Tritcask instance.
         db = Tritcask(self.base_dir)
         try:
-            files = sorted(os.path.join(self.base_dir,f ) \
-                           for f in os.listdir(db.base_path))
-            #self.assertIn(imm_file.filename.replace(INACTIVE, DEAD), files)
+            files = sorted(os.path.join(self.base_dir, f) for f in os.listdir(db.base_path))
+            # self.assertIn(imm_file.filename.replace(INACTIVE, DEAD), files)
             # the immutable_file should be dead as there are no live entries
             # there should be only 2 files, the dead and the live
             # dead + dead_hint + live
             files = sorted(os.listdir(db.base_path))
             self.assertEqual(1, len(files), files)
-            #self.assertIn(DEAD, files[0])
-            #self.assertIn(DEAD, files[1])
-            #self.assertIn(HINT, files[1])
+            # self.assertIn(DEAD, files[0])
+            # self.assertIn(DEAD, files[1])
+            # self.assertIn(HINT, files[1])
             self.assertIn(LIVE, files[0])
         finally:
             db.shutdown()
@@ -1600,8 +1595,7 @@ class MergeTests(BaseTestCase):
         db = Tritcask(self.base_dir)
         # the "empty" immutable_file should be dead as there are no live entries
         # but it's also removed from the _immutable dict
-        files = sorted(os.path.join(self.base_dir,f ) \
-                       for f in os.listdir(db.base_path))
+        files = sorted(os.path.join(self.base_dir, f) for f in os.listdir(db.base_path))
         try:
             self.assertIn(imm_file_1.filename.replace(INACTIVE, DEAD), files)
             self._add_data(db, 100)
@@ -1693,12 +1687,10 @@ class KeydirStatsTests(BaseTestCase):
         keydir = Keydir()
         file_id = DataFile._get_next_file_id()
         for i in range(10):
-            keydir[(0, str(uuid.uuid4()))] = KeydirEntry(file_id, timestamp(),
-                                                    len(str(uuid.uuid4())), i+10)
+            keydir[(0, str(uuid.uuid4()))] = KeydirEntry(file_id, timestamp(), len(str(uuid.uuid4())), i+10)
         file_id_1 = DataFile._get_next_file_id()
         for i in range(20):
-            keydir[(0, str(uuid.uuid4()))] = KeydirEntry(file_id_1, timestamp(),
-                                                    len(str(uuid.uuid4())), i+10)
+            keydir[(0, str(uuid.uuid4()))] = KeydirEntry(file_id_1, timestamp(), len(str(uuid.uuid4())), i+10)
         entry_size = len(str(uuid.uuid4()))*2 + header_size + crc32_size
         self.assertEqual(entry_size*10, keydir._stats[file_id]['live_bytes'])
         self.assertEqual(entry_size*20, keydir._stats[file_id_1]['live_bytes'])
@@ -1772,11 +1764,9 @@ class KeydirStatsTests(BaseTestCase):
         keydir = Keydir()
         file_id = DataFile._get_next_file_id()
         for i in range(10):
-            keydir[(0, str(uuid.uuid4()))] = KeydirEntry(file_id, timestamp(),
-                                                 len(str(uuid.uuid4())), i+10)
+            keydir[(0, str(uuid.uuid4()))] = KeydirEntry(file_id, timestamp(), len(str(uuid.uuid4())), i+10)
         self.assertEqual(keydir._stats[file_id], keydir.get_stats(file_id))
-        self.assertTrue(keydir._stats[file_id] is not \
-                        keydir.get_stats(file_id))
+        self.assertTrue(keydir._stats[file_id] is not keydir.get_stats(file_id))
 
     def test_get_stats_missing(self):
         """Test get_stats with a missing file_id."""
@@ -1843,6 +1833,7 @@ class TritcaskShelfTests(BaseTestCase):
     def test_custom_serialization(self):
         """Test the _serialize and _deserialize methods."""
         path = os.path.join(self.base_dir, 'shelf_serialization')
+
         class MarshalShelf(TritcaskShelf):
             """A shelf that use marshal for de/serialization."""
 
@@ -1882,6 +1873,7 @@ class TritcaskShelfTests(BaseTestCase):
         self.assertEqual(10, len(shelf))
         shelf['foo_a'] = 'bar_a'
         self.assertEqual(11, len(shelf))
+
 
 class WindowsTimerTests(TestCase):
     """Tests for the windows timer."""
