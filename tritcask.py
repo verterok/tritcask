@@ -33,8 +33,6 @@
 from __future__ import division
 
 import contextlib
-import cPickle
-import itertools
 import logging
 import mmap
 import os
@@ -45,12 +43,28 @@ import tempfile
 import uuid
 import zlib
 
+try:
+    import cPickle as pickle
+except ImportError:
+    # alternate import for py3
+    import pickle
+
+try:
+    from itertools import ifilter
+except:
+    # for py3
+    ifilter = filter
+
 from operator import attrgetter
 from collections import namedtuple
-from UserDict import DictMixin
 
+try:
+    from UserDict import DictMixin
+except ImportError:
+    # for py3
+    from collections import MutableMapping as DictMixin
 
-crc32_fmt = '>i'
+crc32_fmt = '>I'  # from Py3 the crc will be 0->2**32-1
 crc32_size = struct.calcsize(crc32_fmt)
 crc32_struct = struct.Struct(crc32_fmt)
 
@@ -62,7 +76,7 @@ hint_header_fmt = '>diiii'
 hint_header_size = struct.calcsize(hint_header_fmt)
 hint_header_struct = struct.Struct(hint_header_fmt)
 
-TOMBSTONE = str(uuid.uuid5(uuid.NAMESPACE_OID, 'TOMBSTONE'))
+TOMBSTONE = str(uuid.uuid5(uuid.NAMESPACE_OID, 'TOMBSTONE')).encode('ascii')
 TOMBSTONE_POS = -1
 
 LIVE = '.live'
@@ -293,7 +307,11 @@ class DataFile(object):
         value_sz = len(value)
         tstamp = timestamp()
         header = header_struct.pack(tstamp, key_sz, value_sz, row_type)
-        crc32 = crc32_struct.pack(zlib.crc32(header + key + value))
+        # we do this AND to always have unsigned integer, because of the
+        # zlib.crc32 change between Py2 and Py3
+        crc32_value = zlib.crc32(header + key + value) & 0xFFFFFFFF
+        crc32 = crc32_struct.pack(crc32_value)
+
         if EXTRA_SEEK:
             # seek to end of file even if we are in append mode, but py2.x IO
             # in win32 is really buggy, see: http://bugs.python.org/issue3207
@@ -312,13 +330,13 @@ class DataFile(object):
         current_pos += crc32_size
         header = fmmap[current_pos:current_pos + header_size]
         current_pos += header_size
-        if header == '' or crc32_bytes == '':
+        if header == b'' or crc32_bytes == b'':
             # reached EOF
             raise EOFError
         try:
             crc32 = crc32_struct.unpack(crc32_bytes)[0]
             tstamp, key_sz, value_sz, row_type = header_struct.unpack(header)
-        except struct.error, e:
+        except struct.error as e:
             raise BadHeader(e)
         key = fmmap[current_pos:current_pos + key_sz]
         current_pos += key_sz
@@ -326,11 +344,12 @@ class DataFile(object):
         value = fmmap[current_pos:current_pos + value_sz]
         current_pos += value_sz
         # verify the crc32 of the data
-        if zlib.crc32(header + key + value) == crc32:
+        crc32_new_value = zlib.crc32(header + key + value) & 0xFFFFFFFF
+        if crc32_new_value == crc32:
             return TritcaskEntry(crc32, tstamp, key_sz, value_sz, row_type,
                                  key, value, value_pos), current_pos
         else:
-            raise BadCrc(crc32, zlib.crc32(header + key + value))
+            raise BadCrc(crc32, crc32_new_value)
 
     def get_hint_file(self):
         """Open and return the hint file."""
@@ -473,7 +492,7 @@ class HintFile(object):
             while True:
                 header = fmap[current_pos:current_pos + hint_header_size]
                 current_pos += hint_header_size
-                if header == '':
+                if header == b'':
                     raise StopIteration
                 tstamp, key_sz, row_type, value_sz, value_pos = \
                     hint_header_struct.unpack(header)
@@ -545,8 +564,7 @@ class Keydir(dict):
                 new_bytes = entry.value_sz - old_entry.value_sz
         except KeyError:
             # a new entry
-            new_bytes = len(key[1]) + entry.value_sz \
-                    + header_size + crc32_size
+            new_bytes = len(key[1]) + entry.value_sz + header_size + crc32_size
             live_entries = stats.get('live_entries', 0)
             stats['live_entries'] = live_entries + 1
         live_bytes = stats.get('live_bytes', 0)
@@ -566,7 +584,7 @@ class Keydir(dict):
             stats['live_bytes'] -= len(key[1]) + entry.value_sz \
                 + header_size + crc32_size
             stats['live_entries'] -= 1
-        except KeyError, e:
+        except KeyError as e:
             logger.warning('Failed to update stats while removing %s with: %s',
                            key, e)
 
@@ -669,8 +687,8 @@ class Tritcask(object):
             # no info for the live file
             return False
         else:
-            return (live_file_stats['live_bytes'] / self.live_file.size) \
-                    < self.dead_bytes_threshold
+            dead_bytes = live_file_stats['live_bytes'] / self.live_file.size
+            return dead_bytes < self.dead_bytes_threshold
 
     def should_merge(self, immutable_files):
         """Check if the immutable_files should be merged."""
@@ -737,7 +755,7 @@ class Tritcask(object):
                     # it's an immutable file
                     data_file = ImmutableDataFile(self.base_path, filename)
                     self._immutable[data_file.file_id] = data_file
-            except IOError, e:
+            except IOError as e:
                 # oops, failed to open the file..discard it
                 broken_files += 1
                 orig = os.path.join(self.base_path, filename)
@@ -772,7 +790,7 @@ class Tritcask(object):
 
     def _build_keydir(self):
         """Build the keydir."""
-        fileids = self._immutable.keys()
+        fileids = list(self._immutable.keys())
         if self.live_file:
             fileids.append(self.live_file.file_id)
         logger.debug('building the keydir, using: %s', fileids)
@@ -786,8 +804,7 @@ class Tritcask(object):
                 self._load_from_data(data_file)
             else:
                 logger.debug('Ignoring empty data file.')
-        if self.live_file and self.live_file.exists() \
-           and self.live_file.size > 0:
+        if self.live_file and self.live_file.exists() and self.live_file.size > 0:
             self._load_from_data(self.live_file)
         else:
             logger.debug('Ignoring empty live file.')
@@ -835,7 +852,7 @@ class Tritcask(object):
         if build_hint and hint_idx:
             # only build the hint file if hint_idx contains data
             with data_file.get_hint_file() as hint_file:
-                for key, hint_entry in hint_idx.iteritems():
+                for key, hint_entry in hint_idx.items():
                     hint_file.write(hint_entry)
 
     def _get_value(self, file_id, value_pos, value_sz):
@@ -849,10 +866,10 @@ class Tritcask(object):
     def put(self, row_type, key, value):
         """Put key/value in the store."""
         # now build the real record
-        if not isinstance(key, str):
-            raise ValueError('key must be a str instance.')
-        if not isinstance(value, str):
-            raise ValueError('value must be a str instance.')
+        if not isinstance(key, bytes):
+            raise ValueError('key must be a bytes instance.')
+        if not isinstance(value, bytes):
+            raise ValueError('value must be a bytes instance.')
         tstamp, value_pos, value_sz = self.live_file.write(row_type, key, value)
         if value != TOMBSTONE:
             kd_entry = KeydirEntry(self.live_file.file_id, tstamp,
@@ -861,8 +878,8 @@ class Tritcask(object):
 
     def get(self, row_type, key):
         """Get the value for the specified row_type, key."""
-        if not isinstance(key, str):
-            raise ValueError('key must be a str instance.')
+        if not isinstance(key, bytes):
+            raise ValueError('key must be a bytes instance.')
         kd_entry = self._keydir[(row_type, key)]
         value = self._get_value(kd_entry.file_id, kd_entry.value_pos,
                                 kd_entry.value_sz)
@@ -878,8 +895,8 @@ class Tritcask(object):
 
     def delete(self, row_type, key):
         """Delete the key/value specified by key."""
-        if not isinstance(key, str):
-            raise ValueError('key must be a str instance.')
+        if not isinstance(key, bytes):
+            raise ValueError('key must be a bytes instance.')
         self.put(row_type, key, TOMBSTONE)
         self._keydir.remove((row_type, key))
 
@@ -890,7 +907,7 @@ class Tritcask(object):
         def by_file_id(item):
             file_id = item[1][0]
             return file_id in immutable_files
-        filtered_keydir = itertools.ifilter(by_file_id, self._keydir.items())
+        filtered_keydir = ifilter(by_file_id, self._keydir.items())
         dest_file = TempDataFile(self.base_path)
         hint_file = dest_file.get_hint_file()
         for keydir_key, kd_entry in sorted(filtered_keydir,
@@ -924,7 +941,7 @@ class Tritcask(object):
             return new_data_file
 
 
-class TritcaskShelf(object, DictMixin):
+class TritcaskShelf(DictMixin, object):
     """A shelve.Shelf-like API backed by a tritcask store."""
 
     def __init__(self, row_type, db):
@@ -950,6 +967,11 @@ class TritcaskShelf(object, DictMixin):
         """dict protocol."""
         return self._deserialize(self._db.get(self.row_type, key))
 
+    def __iter__(self):
+        """MutableMapping protocol (for Py3)."""
+        for i in self.keys():
+            yield i
+
     def __setitem__(self, key, value):
         """dict protocol."""
         if not key:
@@ -973,8 +995,8 @@ class TritcaskShelf(object, DictMixin):
 
         This method allow subclasses to customize the deserialization.
         """
-        return cPickle.loads(raw_value)
+        return pickle.loads(raw_value)
 
     def _serialize(self, value):
         """Serialize value to string using protocol."""
-        return cPickle.dumps(value, protocol=cPickle.HIGHEST_PROTOCOL)
+        return pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
