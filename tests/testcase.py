@@ -109,6 +109,6 @@ class BaseTestCase(TestCase):
 
     def build_data(self):
         """Build a random key/value."""
-        key = str(uuid.uuid4())
+        key = str(uuid.uuid4()).encode('ascii')
         data = os.urandom(50)
         return key, data
