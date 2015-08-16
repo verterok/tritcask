@@ -42,7 +42,7 @@ import zlib
 from operator import attrgetter
 
 import tritcask
-from tritcask import (
+from tritcask.tritcask import (
     TOMBSTONE,
     LIVE,
     HINT,
@@ -106,7 +106,7 @@ class DataFileTest(BaseTestCase):
         """When the clock is not moving, we log a warning."""
         expected_warning = "Repeated timestamps"
         ts = timestamp() + 1.0
-        self.patch(tritcask, "timestamp", lambda: ts)
+        self.patch(tritcask.tritcask, "timestamp", lambda: ts)
 
         id1 = self.file_class._get_next_file_id()
         self.assertFalse(self.memento.check_warning(expected_warning))

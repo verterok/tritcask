@@ -18,13 +18,14 @@
 from distutils.core import setup
 
 setup(name='Tritcask',
-      version='0.1',
+      version='0.2',
       description='Append only (type,key)/value store based on bitcask paper.',
+      long_description=open("README.md").read(),
       author='Guillermo Gonzalez',
       author_email='guillermo.gonzalez@canonical.com',
-      url='',
+      url='https://github.com/verterok/tritcask',
       license='GNU GPL v3',
-      packages=['.'],
+      packages=['tritcask'],
       provides=['tritcask'],
       classifiers=[
           'Development Status :: 5 - Production/Stable',
