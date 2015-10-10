@@ -29,7 +29,10 @@
 # do not wish to do so, delete this exception statement from your
 # version.  If you delete this exception statement from all source
 # files in the program, then also delete it here.
+
 """Set of helpers handlers."""
+
+from __future__ import print_function
 
 import logging
 
@@ -56,7 +59,7 @@ class MementoHandler(logging.Handler):
         if self.debug:
             recorded = [(logging.getLevelName(r.levelno), r.message)
                         for r in self.records]
-            print "Memento messages:", recorded
+            print("Memento messages:", recorded)
         return False
 
     def check_debug(self, *msgs):
