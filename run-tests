@@ -2,6 +2,6 @@
 #
 set -e
 
-pep8 --max-line-length=160 tritcask.py tests/*.py
+pep8 --max-line-length=160 tritcask/*.py tests/*.py
 nosetests --with-coverage --cover-package=tritcask
 nosetests3 --with-coverage --cover-package=tritcask
