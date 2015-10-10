@@ -880,6 +880,13 @@ class LowLevelTest(BaseTestCase):
         self.assertEqual(self.db.live_file.filename,
                          os.path.join(self.db.base_path, files[0]))
 
+    def test_rotate_missing_live_file(self):
+        """Test data file rotation without a live file."""
+        os.unlink(self.db.live_file.filename)
+        self.db.rotate()
+        files = sorted(os.listdir(self.db.base_path))
+        self.assertEqual(0, len(files), files)
+
 
 class InitTest(BaseTestCase):
     """Init tests."""
@@ -1014,6 +1021,18 @@ class InitTest(BaseTestCase):
         # remove the extra entry from the old keydir
         old_keydir.pop((9, b'foo9'))
         self.assertEqual(old_keydir, db._keydir)
+
+    def test_build_keydir_without_data(self):
+        """Test _build_keydir method with an empty data file.
+
+        This should be an impossible case to reach, but we have code to ignore
+        it so here is the test.
+        """
+        db = Tritcask(self.base_dir)
+        self.addCleanup(db.shutdown)
+        # fake an empty immutable file
+        db._immutable[db.live_file.file_id] = db.live_file
+        db._build_keydir()
 
     def test_build_keydir_with_hint(self):
         """Test _build_keydir using a hint file."""
@@ -1768,6 +1787,20 @@ class KeydirStatsTests(BaseTestCase):
         except KeyError as e:
             self.fail(e)
 
+    def test_remove_missing_stat_key(self):
+        """Test the remove method with a missing key."""
+        keydir = Keydir()
+        file_id = DataFile._get_next_file_id()
+        key = str(uuid.uuid4())
+        keydir[(0, key)] = KeydirEntry(file_id, timestamp(),
+                                       len(str(uuid.uuid4())), 10)
+        del keydir._stats[file_id]
+        try:
+            keydir.remove((0, key))
+        except Exception as e:
+            self.fail(e)
+        # all good, no exceptions
+
     def test_get_stats(self):
         """Test the get_stats method."""
         keydir = Keydir()
@@ -1875,7 +1908,7 @@ class TritcaskShelfTests(BaseTestCase):
 
     def test__len__(self):
         """Test for the __len__ method."""
-        path = os.path.join(self.base_dir, 'shelf_get')
+        path = os.path.join(self.base_dir, 'shelf_len')
         shelf = TritcaskShelf(0, Tritcask(path))
         self.addCleanup(shelf._db.shutdown)
         for i in range(10):
@@ -1883,6 +1916,14 @@ class TritcaskShelfTests(BaseTestCase):
         self.assertEqual(10, len(shelf))
         shelf[b'foo_a'] = b'bar_a'
         self.assertEqual(11, len(shelf))
+
+    def test_has_key(self):
+        """Test for has_key."""
+        path = os.path.join(self.base_dir, 'shelf_has_key')
+        shelf = TritcaskShelf(0, Tritcask(path))
+        self.addCleanup(shelf._db.shutdown)
+        shelf['foo0'.encode('ascii')] = 'bar0'.encode('ascii')
+        self.assertTrue(b'foo0' in shelf)
 
 
 class WindowsTimerTests(TestCase):
