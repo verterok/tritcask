@@ -94,9 +94,10 @@ class DataFileTest(BaseTestCase):
         self.assertTrue(curr <= int(self.file_class._get_next_file_id()))
 
     def test_lightning_fast_virtualbox_sometimes_lies(self):
-        """Win on Virtualbox sometimes returns 0 in time.clock."""
+        """Win on Virtualbox sometimes returns 0 in time.process_time."""
         test_items = 100
         self.patch(time, "clock", lambda: 0)
+        self.patch(time, "process_time", lambda: 0)
         file_ids = [self.file_class._get_next_file_id()
                     for _ in range(test_items)]
         # even though the clock is not moving, all ids must be different!
@@ -118,12 +119,14 @@ class DataFileTest(BaseTestCase):
     def test_exists(self):
         """Tests for exists method."""
         new_file = self.file_class(self.base_dir)
+        self.addCleanup(new_file.close)
         self.assertTrue(new_file.exists())
         self.assertTrue(os.path.exists(new_file.filename))
 
     def test_size(self):
         """Test the size property."""
         new_file = self.file_class(self.base_dir)
+        self.addCleanup(new_file.close)
         self.assertEqual(0, new_file.size)
         new_file.fd.write(b'foo')
         new_file.fd.flush()
@@ -132,19 +135,21 @@ class DataFileTest(BaseTestCase):
     def test_has_hint(self):
         """Test that has_hint works as expetced."""
         new_file = self.file_class(self.base_dir)
+        self.addCleanup(new_file.close)
         self.assertFalse(new_file.has_hint)
 
     def test_hint_size(self):
         """Test that hint_size work as expected."""
         new_file = self.file_class(self.base_dir)
+        self.addCleanup(new_file.close)
         self.assertEqual(new_file.hint_size, 0)
 
     def test__open(self):
         """Test the _open private method."""
         new_file = self.file_class(self.base_dir)
+        self.addCleanup(new_file.close)
         # check that the file is opened
         new_file.fd.write(b'foo')
-        new_file.close()
 
     def test_close(self):
         """Test the close method."""
@@ -155,9 +160,11 @@ class DataFileTest(BaseTestCase):
     def test_make_immutable(self):
         """Test for make_immutable method."""
         new_file = self.file_class(self.base_dir)
+        self.addCleanup(new_file.close)
         new_file.fd.write(b'foo')
         new_file.fd.flush()
         immutable_file = new_file.make_immutable()
+        self.addCleanup(immutable_file.close)
         # the DataFile should be closed
         self.assertEqual(None, new_file.fd)
         self.assertEqual(immutable_file.file_id, new_file.file_id)
@@ -223,6 +230,7 @@ class DataFileTest(BaseTestCase):
     def test__getitem__(self):
         """Test our slicing support."""
         data_file = self.file_class(self.base_dir)
+        self.addCleanup(data_file.close)
         tstamp, value_pos, value_sz = data_file.write(0, b'foo', b'bar')
         tstamp1, value1_pos, value1_sz = data_file.write(1, b'foo1', b'bar1')
         self.assertEqual(b'bar', data_file[value_pos:value_pos + value_sz])
@@ -231,6 +239,7 @@ class DataFileTest(BaseTestCase):
     def test__getitem__no_slice(self):
         """Test that we *only* support slicing."""
         data_file = self.file_class(self.base_dir)
+        self.addCleanup(data_file.close)
         tstamp, value_pos, value_sz = data_file.write(0, b'foo', b'bar')
         self.assertRaises(ValueError, data_file.__getitem__, value_pos)
 
@@ -260,6 +269,7 @@ class DataFileTest(BaseTestCase):
     def test_read(self):
         """Test for read method."""
         data_file = self.file_class(self.base_dir)
+        self.addCleanup(data_file.close)
         orig_tstamp, _, _ = data_file.write(0, b'foo', b'bar')
         tstamp1, _, _ = data_file.write(1, b'foo1', b'bar1')
         fmap = mmap.mmap(data_file.fd.fileno(), 0, access=mmap.ACCESS_READ)
@@ -282,7 +292,6 @@ class DataFileTest(BaseTestCase):
             self.assertEqual(len(b'bar1'), value_sz)
             self.assertEqual(b'bar1', value)
             self.assertEqual(1, row_type)
-        data_file.close()
 
     def test_read_bad_crc(self):
         """Test for read method with a bad crc error."""
@@ -321,6 +330,7 @@ class DataFileTest(BaseTestCase):
         """write data after a write/read cycle."""
         data1 = os.urandom(200)
         data_file = self.file_class(self.base_dir)
+        self.addCleanup(data_file.close)
         init_pos = data_file.fd.tell()
         tstamp_1, value_1_pos, value_1_sz = data_file.write(0, b'foo', data1)
         header = header_struct.pack(tstamp_1, len(b'foo'), len(data1), 0)
@@ -355,21 +365,28 @@ class TempDataFileTest(DataFileTest):
     def test_tempfile_name(self):
         """Test the name of the tempfile isn't LIVE."""
         new_file = self.file_class(self.base_dir)
+        self.addCleanup(new_file.close)
         self.assertNotIn(LIVE, new_file.filename)
 
     def test_make_immutable_and_rename_hint(self):
         """Test for make_immutable method."""
         new_file = self.file_class(self.base_dir)
+        self.addCleanup(new_file.close)
         new_file.fd.write(b'foo')
         with new_file.get_hint_file() as hint_file:
             hint_file.fd.write(b'foo,bar')
         immutable_file = new_file.make_immutable()
+        self.addCleanup(immutable_file.close)
         # the DataFile should be closed
         self.assertEqual(None, new_file.fd)
         self.assertEqual(immutable_file.file_id, new_file.file_id)
         # and the hint should have the new name too
-        self.assertTrue(os.path.exists(immutable_file.get_hint_file().path))
-        self.assertFalse(os.path.exists(new_file.get_hint_file().path))
+        hint_file = immutable_file.get_hint_file()
+        self.assertTrue(os.path.exists(hint_file.path))
+        self.addCleanup(hint_file.close)
+        hint_file = new_file.get_hint_file()
+        self.assertFalse(os.path.exists(hint_file.path))
+        hint_file.close()
 
     def test_delete(self):
         """Test for delete method."""
@@ -378,6 +395,7 @@ class TempDataFileTest(DataFileTest):
         with new_file.get_hint_file():
             pass
         self.assertTrue(os.path.exists(new_file.hint_filename))
+        new_file.close()
         new_file.delete()
         self.assertFalse(os.path.exists(new_file.filename))
         self.assertFalse(os.path.exists(new_file.hint_filename))
@@ -388,18 +406,22 @@ class ImmutableDataFileTest(DataFileTest):
     def test_make_immutable(self):
         """Test for make_immutable."""
         new_file = DataFile(self.base_dir)
+        self.addCleanup(new_file.close)
         # write some data
         new_file.fd.write(b'foo')
         immutable_file = new_file.make_immutable()
+        self.addCleanup(immutable_file.close)
         # it's the same instance?
         self.assertEqual(immutable_file.make_immutable(), immutable_file)
 
     def test_make_zombie(self):
         """Test for the make_zombie method."""
         new_file = DataFile(self.base_dir)
+        self.addCleanup(new_file.close)
         # write some data
         new_file.fd.write(b'foo')
         immutable_file = new_file.make_immutable()
+        self.addCleanup(immutable_file.close)
         # create a zombie
         zombie = immutable_file.make_zombie()
         # it's the same instance?
@@ -409,9 +431,11 @@ class ImmutableDataFileTest(DataFileTest):
     def test_make_zombie_with_hint(self):
         """Test for the make_zombie method with a hint file.."""
         new_file = DataFile(self.base_dir)
+        self.addCleanup(new_file.close)
         # write some data
         new_file.fd.write(b'foo')
         immutable_file = new_file.make_immutable()
+        self.addCleanup(immutable_file.close)
         immutable_file.get_hint_file().close()
         # create a zombie
         zombie = immutable_file.make_zombie()
@@ -423,6 +447,7 @@ class ImmutableDataFileTest(DataFileTest):
     def test_write(self):
         """Test the write fails on immutable files."""
         new_file = DataFile(self.base_dir)
+        self.addCleanup(new_file.close)
         # write some data
         new_file.fd.write(b'foo')
         immutable_file = new_file.make_immutable()
@@ -431,6 +456,7 @@ class ImmutableDataFileTest(DataFileTest):
     def test__open(self):
         """Test the _open private method."""
         new_file = DataFile(self.base_dir)
+        self.addCleanup(new_file.close)
         # write some data
         new_file.fd.write(b'foo')
         immutable_file = new_file.make_immutable()
@@ -443,6 +469,7 @@ class ImmutableDataFileTest(DataFileTest):
     def test_close(self):
         """Test the close method."""
         new_file = DataFile(self.base_dir)
+        self.addCleanup(new_file.close)
         # write some data
         new_file.fd.write(b'foo')
         immutable_file = new_file.make_immutable()
@@ -522,39 +549,49 @@ class ImmutableDataFileTest(DataFileTest):
     def test__getitem__(self):
         """Test our slicing support."""
         rw_file = DataFile(self.base_dir)
+        self.addCleanup(rw_file.close)
         tstamp, value_pos, value_sz = rw_file.write(0, b'foo', b'bar')
         tstamp1, value1_pos, value1_sz = rw_file.write(1, b'foo1', b'bar1')
         data_file = rw_file.make_immutable()
+        self.addCleanup(data_file.close)
         self.assertEqual(b'bar', data_file[value_pos:value_pos + value_sz])
         self.assertEqual(b'bar1', data_file[value1_pos:value1_pos + value1_sz])
 
     def test__getitem__no_slice(self):
         """Test that we *only* support slicing."""
         rw_file = DataFile(self.base_dir)
+        self.addCleanup(rw_file.close)
         tstamp, value_pos, value_sz = rw_file.write(0, b'foo', b'bar')
         data_file = rw_file.make_immutable()
+        self.addCleanup(data_file.close)
         self.assertRaises(ValueError, data_file.__getitem__, value_pos)
 
     def test_exists(self):
         """Tests for exists method."""
         rw_file = DataFile(self.base_dir)
+        self.addCleanup(rw_file.close)
         tstamp, value_pos, value_sz = rw_file.write(0, b'foo', b'bar')
         data_file = rw_file.make_immutable()
+        self.addCleanup(data_file.close)
         self.assertTrue(data_file.exists())
 
     def test_size(self):
         """Test the size property."""
         rw_file = DataFile(self.base_dir)
+        self.addCleanup(rw_file.close)
         tstamp, value_pos, value_sz = rw_file.write(0, b'foo', b'bar')
         data_file = rw_file.make_immutable()
+        self.addCleanup(data_file.close)
         self.assertEqual(len(b'bar') + len(b'foo') + header_size + crc32_size,
                          data_file.size)
 
     def test_has_hint(self):
         """Test that has_hint works as expetced."""
         rw_file = DataFile(self.base_dir)
+        self.addCleanup(rw_file.close)
         tstamp, value_pos, value_sz = rw_file.write(0, b'foo', b'bar')
         data_file = rw_file.make_immutable()
+        self.addCleanup(data_file.close)
         self.assertFalse(data_file.has_hint)
         data_file.get_hint_file().close()
         self.assertTrue(data_file.has_hint)
@@ -562,8 +599,10 @@ class ImmutableDataFileTest(DataFileTest):
     def test_hint_size(self):
         """Test that hint_size work as expected."""
         rw_file = DataFile(self.base_dir)
+        self.addCleanup(rw_file.close)
         tstamp, value_pos, value_sz = rw_file.write(0, b'foo', b'bar')
         data_file = rw_file.make_immutable()
+        self.addCleanup(data_file.close)
         self.assertEqual(data_file.hint_size, 0)
         hint_file = data_file.get_hint_file()
         hint_file.fd.write(b"some data")
@@ -579,6 +618,7 @@ class DeadDataFileTest(ImmutableDataFileTest):
     def create_dead_file(self):
         """Helper method to create a dead file."""
         rw_file = DataFile(self.base_dir)
+        self.addCleanup(rw_file.close)
         tstamp, value_pos, value_sz = rw_file.write(0, b'foo', b'bar')
         immutable_file = rw_file.make_immutable()
         immutable_file.get_hint_file().close()
@@ -665,6 +705,7 @@ class HintFileTest(BaseTestCase):
         hint_file = HintFile(path)
         # in Py3 if you open w+b it will have mode rb+ (which is ok)
         self.assertIn(hint_file.fd.mode, ('w+b', 'rb+'))
+        hint_file.close()
 
     def test_init_existing(self):
         """Test initialization with existing file."""
@@ -674,6 +715,7 @@ class HintFileTest(BaseTestCase):
         hint_file.close()
         hint_file = HintFile(path)
         self.assertEqual('rb', hint_file.fd.mode)
+        hint_file.close()
 
     def test_init_existing_empty(self):
         """Test initialization with existing file."""
@@ -683,6 +725,7 @@ class HintFileTest(BaseTestCase):
         hint_file = HintFile(path)
         # in Py3 if you open w+b it will have mode rb+ (which is ok)
         self.assertIn(hint_file.fd.mode, ('w+b', 'rb+'))
+        hint_file.close()
 
     def test_close(self):
         """Test for the close method."""
@@ -709,11 +752,13 @@ class HintFileTest(BaseTestCase):
             db.put(i, ('foo%d' % (i,)).encode('ascii'), ('bar%d' % (i,)).encode('ascii'))
         # make the data file inactive and generate the hint.
         immutable_file = db.live_file.make_immutable()
+        self.addCleanup(immutable_file.close)
         db.shutdown()
         Tritcask(self.base_dir).shutdown()
         self.assertTrue(immutable_file.has_hint)
         # check that the hint matches the contents in the DB
         hint_file = immutable_file.get_hint_file()
+        self.addCleanup(hint_file.close)
         db = Tritcask(self.base_dir)
         self.addCleanup(db.shutdown)
         for hint_entry in hint_file.iter_entries():
@@ -814,7 +859,8 @@ class LowLevelTest(BaseTestCase):
         self.db.put(0, b'foo', b'bar')
         old_file_id = self.db.live_file.file_id
         # shutdown and rename the file.
-        self.db.live_file.make_immutable()
+        immutable_file = self.db.live_file.make_immutable()
+        self.addCleanup(immutable_file.close)
         self.db.shutdown()
         self.db = Tritcask(self.base_dir)
         self.addCleanup(self.db.shutdown)
@@ -836,7 +882,8 @@ class LowLevelTest(BaseTestCase):
         for i in range(5):
             self.db.put(i, ('foo%d' % (i,)).encode('ascii'), ('bar%s' % (i,)).encode('ascii'))
         # make the data file inactive and generate the hint.
-        self.db.live_file.make_immutable()
+        immutable_file = self.db.live_file.make_immutable()
+        self.addCleanup(immutable_file.close)
         self.db.shutdown()
         self.db = Tritcask(self.base_dir)
         for i in range(5, 10):
@@ -1041,7 +1088,7 @@ class InitTest(BaseTestCase):
         for i in range(10):
             db.put(i, ('foo%d' % (i,)).encode('ascii'), ('bar%s' % (i,)).encode('ascii'))
         # make the data file inactive and generate the hint.
-        db.live_file.make_immutable()
+        db.live_file.make_immutable().close()
         old_keydir = db._keydir
         db.shutdown()
         Tritcask(self.base_dir).shutdown()
@@ -1057,14 +1104,15 @@ class InitTest(BaseTestCase):
         for i in range(10):
             db.put(i, ('foo%d' % (i,)).encode('ascii'), ('bar%s' % (i,)).encode('ascii'))
         # make the data file inactive and generate the hint.
-        db.live_file.make_immutable()
+        immutable_file = db.live_file.make_immutable()
+        self.addCleanup(immutable_file.close)
         db.shutdown()
         # create more stuff.
         db = Tritcask(self.base_dir)
         for i in range(20, 30):
             db.put(i, ('foo%d' % (i,)).encode('ascii'), ('bar%s' % (i,)).encode('ascii'))
         # make the data file inactive and generate the hint.
-        db.live_file.make_immutable()
+        db.live_file.make_immutable().close()
         old_keydir = db._keydir
         db.shutdown()
         Tritcask(self.base_dir).shutdown()
@@ -1080,7 +1128,9 @@ class InitTest(BaseTestCase):
         for i in range(10):
             db.put(i, ('foo%d' % (i,)).encode('ascii'), ('bar%s' % (i,)).encode('ascii'))
         # make the data file inactive and generate the hint.
-        hint_filename = db.live_file.make_immutable().hint_filename
+        immutable_file = db.live_file.make_immutable()
+        hint_filename = immutable_file.hint_filename
+        immutable_file.close()
         db.shutdown()
         db = Tritcask(self.base_dir)
         self.addCleanup(db.shutdown)
@@ -1121,7 +1171,7 @@ class InitTest(BaseTestCase):
         for i in range(10):
             db.put(i, ('foo%d' % (i,)).encode('ascii'), ('bar%s' % (i,)).encode('ascii'))
         # make the data file inactive and generate the hint.
-        db.live_file.make_immutable()
+        db.live_file.make_immutable().close()
         old_keydir = db._keydir
         db.shutdown()
         db = Tritcask(self.base_dir)
@@ -1453,6 +1503,7 @@ class MergeTests(BaseTestCase):
         immutable_fnames = [ifile.filename for ifile in db._immutable.values()]
         # do the merge.
         data_file = db.merge(db._immutable)
+        self.addCleanup(data_file.close)
         for entry in data_file.iter_entries():
             (crc32, tstamp, key_sz, value_sz, row_type,
                 key, value, value_pos) = entry
@@ -1482,6 +1533,7 @@ class MergeTests(BaseTestCase):
         immutable_fnames = [ifile.filename for ifile in db._immutable.values()]
         # do the merge.
         data_file = db.merge(db._immutable)
+        self.addCleanup(data_file.close)
         for entry in data_file.iter_entries():
             (crc32, tstamp, key_sz, value_sz, row_type,
                 key, value, value_pos) = entry
@@ -1511,6 +1563,7 @@ class MergeTests(BaseTestCase):
         db = Tritcask(self.base_dir)
         self.addCleanup(db.shutdown)
         self.assertFalse(old_live_file.exists())
+        old_live_file.close()
         self.assertIn(old_live_file.file_id, db._immutable)
 
     def test_auto_merge(self):

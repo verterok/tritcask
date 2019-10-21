@@ -1,1 +1,1 @@
-from .tritcask import *
+from .tritcask import *  # noqa

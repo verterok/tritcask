@@ -51,7 +51,7 @@ except ImportError:
 
 try:
     from itertools import ifilter
-except:
+except ImportError:
     # for py3
     ifilter = filter
 
@@ -175,14 +175,18 @@ class WindowsTimer(object):
 
     def __init__(self):
         # start counting from now (and start the clock)
-        self.start = time.time() + time.clock()
+        if hasattr(time, 'clock'):
+            self._clock = time.clock
+        else:
+            self._clock = time.process_time
+        self.start = time.time() + self._clock()
 
     def time(self):
         """Return a float timestamp.
 
-        The timestamp is start_time + time.clock().
+        The timestamp is start_time + time.process_time()/clock().
         """
-        return self.start + time.clock()
+        return self.start + self._clock()
 
 
 if sys.platform == 'win32':
@@ -279,19 +283,19 @@ class DataFile(object):
                 current_pos = new_pos
                 yield entry
             except EOFError:
-                raise StopIteration
+                return
             except BadCrc:
                 self.has_bad_crc = True
                 logger.warning('Found BadCrc on %s at position: %s, '
                                'the rest of the file will be ignored.',
                                self.file_id, current_pos)
-                raise StopIteration
+                return
             except BadHeader:
                 self.has_bad_data = True
                 logger.warning('Found corrupted header on %s at position: %s, '
                                'the rest of the file will be ignored.',
                                self.file_id, current_pos)
-                raise StopIteration
+                return
 
     def __getitem__(self, item):
         """__getitem__ to support slicing and *only* slicing."""
@@ -493,7 +497,7 @@ class HintFile(object):
                 header = fmap[current_pos:current_pos + hint_header_size]
                 current_pos += hint_header_size
                 if header == b'':
-                    raise StopIteration
+                    return
                 tstamp, key_sz, row_type, value_sz, value_pos = \
                     hint_header_struct.unpack(header)
                 key = fmap[current_pos:current_pos + key_sz]
@@ -723,7 +727,9 @@ class Tritcask(object):
                 # if the size of the live file
                 if self.live_file and self.live_file.size > 0 and not rotated:
                     self.rotate(create_file=False)
-                self.merge(self._immutable)
+                new_file = self.merge(self._immutable)
+                if new_file is not None:
+                    new_file.close()
 
     def _find_data_files(self):
         """Collect the files we need to work with."""
@@ -813,14 +819,14 @@ class Tritcask(object):
     def _load_from_hint(self, data_file):
         """Load keydir contents from a hint file."""
         logger.debug("loading entries from hint of: %s", data_file.filename)
-        hint_file = data_file.get_hint_file()
-        for hint_entry in hint_file.iter_entries():
-            if hint_entry.value_pos == TOMBSTONE_POS:
-                self._keydir.remove((hint_entry.row_type, hint_entry.key))
-            else:
-                kd_entry = KeydirEntry.from_hint_entry(data_file.file_id,
-                                                       hint_entry)
-                self._keydir[(hint_entry.row_type, hint_entry.key)] = kd_entry
+        with data_file.get_hint_file() as hint_file:
+            for hint_entry in hint_file.iter_entries():
+                if hint_entry.value_pos == TOMBSTONE_POS:
+                    self._keydir.remove((hint_entry.row_type, hint_entry.key))
+                else:
+                    kd_entry = KeydirEntry.from_hint_entry(data_file.file_id,
+                                                           hint_entry)
+                    self._keydir[(hint_entry.row_type, hint_entry.key)] = kd_entry
 
     def _load_from_data(self, data_file):
         """Load keydir info from a data file.
