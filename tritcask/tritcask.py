@@ -61,8 +61,11 @@ from collections import namedtuple
 try:
     from UserDict import DictMixin
 except ImportError:
-    # for py3
-    from collections import MutableMapping as DictMixin
+    try:
+        # for py3 < 3.3
+        from collections import MutableMapping as DictMixin
+    except ImportError:
+        from collections.abc import MutableMapping as DictMixin
 
 crc32_fmt = '>I'  # from Py3 the crc will be 0->2**32-1
 crc32_size = struct.calcsize(crc32_fmt)
