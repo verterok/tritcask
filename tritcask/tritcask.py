@@ -33,6 +33,7 @@
 from __future__ import division
 
 import contextlib
+import json
 import logging
 import mmap
 import os
@@ -953,27 +954,39 @@ class Tritcask(object):
 class TritcaskShelf(DictMixin, object):
     """A shelve.Shelf-like API backed by a tritcask store."""
 
-    def __init__(self, row_type, db):
+    def __init__(self, row_type, db, serialize_keys=False):
         """Create the instance."""
         self.row_type = row_type
         self._db = db
+        self._serialize_keys = serialize_keys
+
+
 
     def keys(self):
         """dict protocol."""
         for r, k in self._db.keys():
             if r == self.row_type:
-                yield k
+                if self._serialize_keys:
+                    yield self._deserialize(k)
+                else:
+                    yield k
 
     def has_key(self, key):
         """dict protocol."""
+        if self._serialize_keys:
+            key = self._serialize(key)
         return (self.row_type, key) in self._db.keys()
 
     def __contains__(self, key):
         """dict protocol."""
+        if self._serialize_keys:
+            key = self._serialize(key)
         return (self.row_type, key) in self._db
 
     def __getitem__(self, key):
         """dict protocol."""
+        if self._serialize_keys:
+            key = self._serialize(key)
         return self._deserialize(self._db.get(self.row_type, key))
 
     def __iter__(self):
@@ -983,12 +996,14 @@ class TritcaskShelf(DictMixin, object):
 
     def __setitem__(self, key, value):
         """dict protocol."""
-        if not key:
-            raise ValueError("Invalid key: %r" % (key,))
+        if self._serialize_keys:
+            key = self._serialize(key)
         self._db.put(self.row_type, key, self._serialize(value))
 
     def __delitem__(self, key):
         """dict protocol."""
+        if self._serialize_keys:
+            key = self._serialize(key)
         self._db.delete(self.row_type, key)
 
     def __len__(self):
@@ -1009,3 +1024,27 @@ class TritcaskShelf(DictMixin, object):
     def _serialize(self, value):
         """Serialize value to string using protocol."""
         return pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+class Cask(TritcaskShelf):
+    """A KV store backed by a Tritcask store."""
+
+    @classmethod
+    def from_path(cls, path, row_type=0, auto_merge=True, dead_bytes_threshold=0.5, max_immutable_files=20):
+        """Create a TritcaskShelf instance from a path.
+
+        Args:
+            path: The path to the Tritcask database directory.
+            row_type: The row type to use for the shelf. (optional)
+            auto_merge: Whether to auto-merge the immutable files. (optional)
+            dead_bytes_threshold: The threshold for dead bytes. (optional)
+            max_immutable_files: The maximum number of immutable files. (optional)
+            serialize_keys: Whether to serialize the keys. Otherwise the keys are expected to be bytes.(optional)
+        """
+        return cls(row_type, Tritcask(path, auto_merge, dead_bytes_threshold, max_immutable_files), serialize_keys=True)
+
+    def _serialize(self, raw_value):
+        return json.dumps(raw_value, sort_keys=True).encode('utf-8')
+
+    def _deserialize(self, raw_value):
+        return json.loads(raw_value.decode('utf-8'))
