@@ -51,6 +51,7 @@ from tritcask.tritcask import (
     BROKEN,
     BadCrc,
     BadHeader,
+    Cask,
     DataFile,
     ImmutableDataFile,
     TempDataFile,
@@ -1943,7 +1944,7 @@ class TritcaskShelfTests(BaseTestCase):
 
         db = Tritcask(path)
         self.addCleanup(db.shutdown)
-        shelf = MarshalShelf(0, db)
+        shelf = MarshalShelf(0, db, serialize_keys=False)
         shelf[b'foo'] = b'bar'
         self.assertIn(b'bar', shelf[b'foo'])
         self.assertEqual(db.get(0, b'foo'), marshal.dumps(b'bar'))
@@ -1986,3 +1987,60 @@ class WindowsTimerTests(TestCase):
         """Test that the initial value is > 0."""
         timer = WindowsTimer()
         self.assertTrue(int(timer.time()) > 0)
+
+
+class TestCaskSerialization(BaseTestCase):
+    """Tests for the Cask class (JSON-serialized KV store)."""
+
+    def setUp(self):
+        super().setUp()
+        self.cask = Cask.from_path(self.base_dir)
+
+    def test_all_json_primitives_as_keys_and_values(self):
+        primitives = [
+            None,
+            True,
+            False,
+            123,
+            4.56,
+            "hello",
+            [1, 2, "abc", None, False],
+            {"z": 1, "t": [2, 3], "b": False, "c": "hello", "d": {"e": 1.23}}
+        ]
+        for val in primitives:
+            self.cask[val] = val
+            self.assertEqual(self.cask[val], val)
+
+    def test_keys_consistency(self):
+        # Ensure that keys() yields all keys, and __len__ matches count
+        keys_inserted = [{"a": i, "b": [i, i+1]} for i in range(5)]
+        for i, k in enumerate(keys_inserted):
+            self.cask[k] = i
+        listed = list(self.cask.keys())
+        for k in keys_inserted:
+            found = any(dict(k) == dict(item) if isinstance(item, dict) else False for item in listed)
+            self.assertTrue(found)
+        self.assertEqual(len(self.cask), len(keys_inserted))
+
+        # Different order dict keys
+        k1 = {"x": 7, "y": 8}
+        k2 = {"y": 8, "x": 7}
+        self.cask[k1] = 42
+        self.assertIn(k2, self.cask)
+        self.assertEqual(self.cask[k2], 42)
+        self.assertEqual(self.cask[k1], 42)
+
+        # Overwrite one with the other order, value should change
+        self.cask[k2] = 99
+        self.assertEqual(self.cask[k1], 99)
+        self.assertEqual(self.cask[k2], 99)
+
+        # Length should not increase
+        before = len(self.cask)
+        self.cask[k1] = 123
+        self.assertEqual(len(self.cask), before)
+
+        # keys() generator type
+        import types
+        self.assertTrue(isinstance(self.cask.keys(), types.GeneratorType))
+        self.assertTrue(any(isinstance(k, dict) for k in self.cask.keys()))

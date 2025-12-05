@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Tritcask"
+version = "0.4"
+description = "A very fast and crash friendly key-value store based on bitcask paper."
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "GNU GPL v3"}
+authors = [
+    {name = "Guillermo Gonzalez", email = "guillermo.gonzalez@canonical.com"}
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License (GPL)",
+    "Operating System :: OS Independent",
+    "Operating System :: POSIX",
+    "Programming Language :: Python",
+    "Topic :: Database",
+]
+keywords = ["database", "key-value", "bitcask", "append-only"]
+
+[project.optional-dependencies]
+test = [
+    "coverage",
+    "nose",
+    "testtools",
+    "ruff",
+]
+
+[tool.setuptools]
+packages = ["tritcask"]
+
