@@ -2250,7 +2250,7 @@ class TestTritcaskShelf:
             for i in range(10):
                 shelf[('foo%d' % (i,)).encode('ascii')] = ('bar%d' % (i,)).encode('ascii')
             keys = shelf.keys()
-            assert type(keys) == types.GeneratorType
+            assert type(keys) is types.GeneratorType
             assert len(list(keys)) == 10
         finally:
             shelf._db.shutdown()
