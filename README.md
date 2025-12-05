@@ -1,6 +1,6 @@
 # Tritcask
 
-You can never have enough key value stores that are:
+You can never have enough local disk-based key value stores that are:
 * 100% python
 * based on [bitcask](https://github.com/basho/bitcask)
 * very fast (3x to 100x vs SQLite)
