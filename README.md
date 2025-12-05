@@ -9,7 +9,7 @@ You can never have enough key value stores that are:
 
 ## Using Cask
 
-`Cask` is a dict-like interface backed by a Tritcask store. It provides a familiar dictionary API for storing and retrieving Python objects. You can create a cask from a path using the `from_path` class method.
+`Cask` is a dict-like interface backed by a Tritcask store. It provides a familiar dictionary API for storing and retrieving Python primitive types. You can create a cask from a path using the `from_path` class method.
 
 ### Example
 
