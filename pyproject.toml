@@ -26,8 +26,7 @@ keywords = ["database", "key-value", "bitcask", "append-only"]
 [project.optional-dependencies]
 test = [
     "coverage",
-    "nose",
-    "testtools",
+    "pytest",
     "ruff",
 ]
 

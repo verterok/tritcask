@@ -32,6 +32,6 @@ jobs:
           uv sync --all-extras
       - name: Run tests
         run: |
-          uv run nosetests
+          uv run pytest
       - name: Run ruff
         run: uv run ruff check tritcask/ tests/
