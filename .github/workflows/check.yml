@@ -25,8 +25,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install uv
         run: |
-          pip install pipx
-          pipx install uv
+          pip install uv
       - name: Install dependencies with uv
         run: |
           uv sync --all-extras
