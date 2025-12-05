@@ -193,11 +193,7 @@ class WindowsTimer(object):
         return self.start + self._clock()
 
 
-if sys.platform == 'win32':
-    _timer = WindowsTimer()
-    timestamp = _timer.time
-else:
-    timestamp = time.time
+timestamp = time.monotonic_ns
 
 
 class DataFile(object):
